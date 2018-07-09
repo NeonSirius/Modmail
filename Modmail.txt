@@ -1,0 +1,127 @@
+"""Script for /r/SeaOfThieves Discord Modmail."""
+
+import discord
+from datetime import datetime
+import time
+import asyncio
+ 
+client = discord.Client()
+
+async def configure(message, new_embed, colour, description, channel_id):
+    """Sub process."""
+    
+    author = message.author
+    content = message.content
+    
+
+    # Embed configuration
+    new_embed.set_author(name="%s#%s" % (author.name, author.discriminator), icon_url=author.avatar_url)
+    new_embed.description = description
+    new_embed.colour = colour
+    for attachment in message.attachments:
+        new_embed.set_image(url=attachment["url"])
+
+    # Combine with old embeds
+    try:
+        async for old_message in client.logs_from(client.get_channel(channel_id), limit=1):
+            old_embed = old_message.embeds[0]
+            if old_embed["author"]["name"] == new_embed.author.name \
+                and old_embed["description"] == description \
+                and "image" not in old_embed \
+                and len(old_embed["fields"]) < 24:
+                    await client.delete_message(old_message)
+                    for field in old_embed["fields"]:
+                        if field["value"] != content:
+                            new_embed.add_field(name=field["name"], value=field["value"], inline=False)
+
+    except:
+        pass
+
+    # Split embed
+    maxLength = 1000
+    if len(content):
+        new_embed.add_field(name=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"), value=content[:maxLength])
+    else:
+        new_embed.add_field(name=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"), value="_ _")
+
+    if len(content) > maxLength:
+        new_embed.add_field(name='...', value=content[maxLength:])
+
+    # Confirmation Reaction
+    try:
+        await client.add_reaction(message, '✅')
+
+    except:
+        pass
+
+modmail_id = "445980956470542366"
+
+async def flowchart(message):
+    author = message.author
+    if not author.bot:
+        embed = discord.Embed()
+        mention = author.mention
+        if not message.server:
+            
+            channel_id = modmail_id
+            await configure(message, embed, 4886754, "Message from " + mention, channel_id) 
+            await client.send_message(client.get_channel(channel_id), content="`%s`" % (mention), embed=embed)
+
+        elif client.user.id in message.raw_mentions:
+            if message.channel.id == modmail_id:
+
+                for member in message.mentions:
+                    message.content = message.content.replace(member.mention, "")
+                    if member != client.user:
+                        await client.start_private_message(member)
+                for channel in client.private_channels:
+                    recipients = channel.recipients
+                    if len(recipients) == 1:
+                        for member in message.mentions:
+                            if recipients[0] == member:
+                                await configure(message, embed, 16777215, "", channel.id)
+                                try:
+                                    await client.send_message(channel, embed=embed)
+
+                                except:
+                                    await client.send_message(message.channel, content="Message to %s was unsuccessful." % (member))
+
+            else:
+
+                for member in message.mentions:
+                    message.content = message.content.replace(member.mention,
+                                                              "@%s#%s" % (member.name, member.discriminator))
+                description = "%s in %s" % (mention, message.channel.mention)
+                channel_id = modmail_id
+                await configure(message, embed, 13632027, description, channel_id)
+                await client.send_message(client.get_channel(channel_id), embed=embed)  
+
+@client.event
+async def on_message(message):
+    await flowchart(message)
+
+@client.event
+async def on_message_edit(before, after):
+    await flowchart(after)
+ 
+@client.event
+async def on_ready():
+    print("Ready!")
+    await client.change_presence(game=discord.Game(name="Ping or Message Me!"))
+
+async def main():
+    """Main entry point for the script."""
+    token = open("token.txt", "r")
+    await client.login(token.read())
+    while True:
+        try:
+            await client.connect()
+            
+        except BaseException:
+            print("BaseException!")
+            await asyncio.sleep(5)
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
